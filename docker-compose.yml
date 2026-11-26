@@ -1,0 +1,84 @@
+services:
+  # 1. Frontend & Nginx Reverse Proxy
+  frontend:
+    build:
+      context: .
+      dockerfile: deployment/docker/Dockerfile.frontend
+    container_name: leafline-soil-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - leafline-net
+
+  # 2. FastAPI Backend Service
+  backend:
+    build:
+      context: .
+      dockerfile: deployment/docker/Dockerfile.api
+    container_name: leafline-soil-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    expose:
+      - "8000"
+    env_file:
+      - .env
+    environment:
+      - ENVIRONMENT=production
+      - MOCK_AUTH_MODE=false
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - leafline-net
+
+  # 3. Background Analysis Worker
+  worker:
+    build:
+      context: .
+      dockerfile: deployment/docker/Dockerfile.worker
+    container_name: leafline-soil-worker
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - ENVIRONMENT=production
+      - MOCK_AUTH_MODE=false
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - leafline-net
+
+  # Optional local MySQL container for standalone development (profile: dev)
+  mysql-dev:
+    image: mysql:8.0
+    container_name: leafline-soil-mysql-dev
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root_secure_password_2026
+      MYSQL_DATABASE: leafline_soil
+      MYSQL_USER: leafline_user
+      MYSQL_PASSWORD: leafline_secure_pass_2026
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_dev_data:/var/lib/mysql
+    networks:
+      - leafline-net
+    profiles:
+      - dev
+
+networks:
+  leafline-net:
+    driver: bridge
+
+volumes:
+  mysql_dev_data:
